@@ -1,0 +1,656 @@
+
+/*
+================================================================
+FILE: README-MCP-SETUP.txt
+PROJECT: Investment Insights MCP Server
+JAVA: 21
+SPRING BOOT: 3.5.7
+SPRING AI: 1.1.0
+================================================================
+
+
+STEP 1: INSTALL PREREQUISITES
+================================================================
+
+Install the following:
+
+1. Java JDK 21
+2. Maven 3.9+
+3. IntelliJ IDEA or Eclipse (optional)
+4. Postman (optional)
+5. MCP Inspector (for MCP testing)
+6. Access to the investment external API
+7. JWT issuer / authentication provider
+
+Verify Java:
+
+java -version
+
+Expected:
+Java 21
+
+Verify Maven:
+
+mvn -version
+
+Expected:
+Apache Maven 3.9+
+
+
+STEP 2: CREATE PROJECT
+================================================================
+
+Create project directory:
+
+mkdir investment-insights-mcp
+
+cd investment-insights-mcp
+
+Create Maven project structure:
+
+src/
+  main/
+    java/
+      com/
+        company/
+          investment/
+            mcp/
+              InvestmentMcpApplication.java
+
+              model/
+                InsightType.java
+                InsightFilter.java
+                InsightRequest.java
+                InsightResponse.java
+
+              config/
+                InsightProperties.java
+                ApiConfig.java
+                SecurityConfig.java
+
+              service/
+                InsightClassificationService.java
+                UserIdentityService.java
+                InvestmentInsightService.java
+
+              client/
+                InvestmentApiClient.java
+
+              tools/
+                InsightClassificationTools.java
+                InvestmentInsightTools.java
+
+    resources/
+      application.yml
+      application-local.yml
+      application-dev.yml
+      application-qa.yml
+      application-prod.yml
+
+  test/
+    java/
+      com/company/investment/mcp/service/
+        InsightClassificationServiceTest.java
+
+    resources/
+      application-test.yml
+
+pom.xml
+
+
+STEP 3: ADD SOURCE CODE
+================================================================
+
+Copy the consolidated source code into the respective files.
+
+IMPORTANT:
+
+Do not put all Java classes into one physical Java file.
+
+Each public Java class must be saved in its own file.
+
+Use the filename delimiters in the consolidated source document
+to identify where each class belongs.
+
+Save YAML configurations under src/main/resources.
+
+Save test classes under src/test/java.
+
+
+STEP 4: CONFIGURE LOCAL ENVIRONMENT
+================================================================
+
+Open terminal in the project directory.
+
+Linux / macOS:
+
+export SPRING_PROFILES_ACTIVE=local
+
+export JWT_ISSUER_URI=https://your-test-identity-provider
+
+export INVESTMENT_API_URL=http://localhost:9090
+
+export GPN_CLAIM=userGpn
+
+Windows PowerShell:
+
+$env:SPRING_PROFILES_ACTIVE="local"
+
+$env:JWT_ISSUER_URI="https://your-test-identity-provider"
+
+$env:INVESTMENT_API_URL="http://localhost:9090"
+
+$env:GPN_CLAIM="userGpn"
+
+Replace these values with your actual local environment settings.
+
+JWT_ISSUER_URI:
+Issuer URL of the identity provider.
+
+INVESTMENT_API_URL:
+Base URL of the investment API.
+
+GPN_CLAIM:
+JWT claim containing the user's GPN.
+
+Do not hardcode authentication tokens in application.yml.
+
+
+STEP 5: CONFIGURE EXTERNAL API
+================================================================
+
+Configure application-local.yml:
+
+app:
+  investment-api:
+    base-url: http://localhost:9090
+    insights-path: /api/investment/insights
+    connect-timeout: 5000
+    read-timeout: 15000
+
+The external API should accept:
+
+HTTP METHOD:
+POST
+
+ENDPOINT:
+/api/investment/insights
+
+HEADERS:
+
+Authorization: Bearer <JWT_TOKEN>
+
+x_user_gpn: <USER_GPN>
+
+Content-Type: application/json
+
+EXPECTED REQUEST BODY:
+
+{
+  "filter": {
+    "insightType": "ASSET_ALLOCATION",
+    "holdingsFlag": true
+  }
+}
+
+The actual request structure must match your external
+investment API contract.
+
+
+STEP 6: BUILD THE APPLICATION
+================================================================
+
+Run:
+
+mvn clean install
+
+This will:
+
+1. Download dependencies.
+2. Compile Java classes.
+3. Compile MCP tool definitions.
+4. Execute unit tests.
+5. Package the application.
+
+If the build succeeds, you should see:
+
+BUILD SUCCESS
+
+
+STEP 7: RUN UNIT TESTS
+================================================================
+
+Run:
+
+mvn test
+
+Expected test scenarios:
+
+Test 1:
+Input: Show my holdings
+
+Expected:
+insightType = HOLDINGS
+holdingsFlag = true
+
+Test 2:
+Input: Show my asset allocation
+
+Expected:
+insightType = ASSET_ALLOCATION
+holdingsFlag = true
+
+Test 3:
+Input: Show portfolio performance
+
+Expected:
+insightType = PERFORMANCE
+holdingsFlag = false
+
+Test 4:
+Input: Show transactions
+
+Expected:
+insightType = TRANSACTIONS
+holdingsFlag = false
+
+Test 5:
+Input: Hello
+
+Expected:
+insightType = UNKNOWN
+holdingsFlag = false
+
+
+STEP 8: START MCP SERVER
+================================================================
+
+Run:
+
+mvn spring-boot:run
+
+Alternatively:
+
+java -jar target/investment-insights-mcp-1.0.0.jar
+
+Expected startup:
+
+Started InvestmentMcpApplication
+
+Server URL:
+
+http://localhost:8080
+
+MCP endpoint:
+
+http://localhost:8080/mcp
+
+Health endpoint:
+
+http://localhost:8080/actuator/health
+
+NOTE:
+
+The health endpoint can be checked in a browser.
+
+The MCP endpoint should be accessed through an MCP client,
+not treated as a normal browser page.
+
+
+STEP 9: CONNECT MCP INSPECTOR
+================================================================
+
+Install MCP Inspector:
+
+npx @modelcontextprotocol/inspector
+
+Start the Inspector.
+
+Select:
+
+Transport:
+Streamable HTTP
+
+Server URL:
+
+http://localhost:8080/mcp
+
+Configure authentication headers if your local
+MCP client requires them.
+
+For example:
+
+Authorization: Bearer <VALID_TEST_JWT>
+
+Connect to the server.
+
+Open the Tools section.
+
+You should see:
+
+1. classify_insight_request
+
+2. get_investment_insights
+
+3. get_supported_insight_types
+
+NOTE:
+
+The JWT must be issued by the configured identity provider
+and must contain the configured GPN claim.
+
+The earlier reference implementation assumes that the
+authenticated JWT is available in Spring Security context.
+
+
+STEP 10: TEST MCP TOOL 1
+================================================================
+
+Tool:
+
+classify_insight_request
+
+Input:
+
+{
+  "userPrompt": "Show my holdings"
+}
+
+Expected output:
+
+{
+  "insightType": "HOLDINGS",
+  "holdingsFlag": true
+}
+
+Another example:
+
+{
+  "userPrompt": "Show my asset allocation"
+}
+
+Expected output:
+
+{
+  "insightType": "ASSET_ALLOCATION",
+  "holdingsFlag": true
+}
+
+
+STEP 11: TEST MCP TOOL 2
+================================================================
+
+Tool:
+
+get_investment_insights
+
+Input:
+
+{
+  "userPrompt": "Show my asset allocation"
+}
+
+Internal execution:
+
+1. Receive original user prompt.
+
+2. Identify insightType.
+
+3. Identify holdingsFlag.
+
+4. Read authenticated JWT from security context.
+
+5. Extract userGpn.
+
+6. Extract bearer token.
+
+7. Build InsightFilter.
+
+8. Build InsightRequest.
+
+9. Call external investment API.
+
+10. Return investment data to MCP client.
+
+Expected filter:
+
+{
+  "insightType": "ASSET_ALLOCATION",
+  "holdingsFlag": true
+}
+
+Expected outgoing headers:
+
+Authorization:
+Bearer <JWT_TOKEN>
+
+x_user_gpn:
+123456
+
+Expected outgoing request:
+
+{
+  "filter": {
+    "insightType": "ASSET_ALLOCATION",
+    "holdingsFlag": true
+  }
+}
+
+
+STEP 12: TEST MCP TOOL 3
+================================================================
+
+Tool:
+
+get_supported_insight_types
+
+Expected response:
+
+[
+  "HOLDINGS",
+  "ASSET_ALLOCATION",
+  "PERFORMANCE",
+  "TRANSACTIONS",
+  "PORTFOLIO_SUMMARY"
+]
+
+
+STEP 13: TEST WITH REAL USER PROMPTS
+================================================================
+
+Try these prompts through your MCP client:
+
+PROMPT 1:
+Show my current holdings.
+
+Expected:
+HOLDINGS
+holdingsFlag = true
+
+PROMPT 2:
+Give me my asset allocation.
+
+Expected:
+ASSET_ALLOCATION
+holdingsFlag = true
+
+PROMPT 3:
+Show my investment performance.
+
+Expected:
+PERFORMANCE
+holdingsFlag = false
+
+PROMPT 4:
+Show my recent transactions.
+
+Expected:
+TRANSACTIONS
+holdingsFlag = false
+
+PROMPT 5:
+Give me a portfolio summary.
+
+Expected:
+PORTFOLIO_SUMMARY
+holdingsFlag = false
+
+
+STEP 14: ENVIRONMENT CONFIGURATION
+================================================================
+
+LOCAL:
+
+SPRING_PROFILES_ACTIVE=local
+
+INVESTMENT_API_URL=http://localhost:9090
+
+JWT_ISSUER_URI=<LOCAL_ISSUER>
+
+
+DEV:
+
+SPRING_PROFILES_ACTIVE=dev
+
+INVESTMENT_API_URL=<DEV_API_URL>
+
+JWT_ISSUER_URI=<DEV_ISSUER>
+
+
+QA:
+
+SPRING_PROFILES_ACTIVE=qa
+
+INVESTMENT_API_URL=<QA_API_URL>
+
+JWT_ISSUER_URI=<QA_ISSUER>
+
+
+PROD:
+
+SPRING_PROFILES_ACTIVE=prod
+
+INVESTMENT_API_URL=<PROD_API_URL>
+
+JWT_ISSUER_URI=<PROD_ISSUER>
+
+
+STEP 15: DEPLOY TO ENTERPRISE HARNESS
+================================================================
+
+Deploy the packaged Spring Boot application.
+
+Configure:
+
+1. MCP server URL.
+2. Environment-specific external API URL.
+3. JWT issuer and audience validation.
+4. GPN claim name.
+5. Required authentication headers.
+6. Network access to the investment API.
+7. TLS certificates.
+8. Secret management.
+
+The harness must forward the authenticated user's token
+to the MCP server.
+
+The MCP server must validate the token before reading
+the user's GPN.
+
+Do not accept userGpn as an ordinary tool argument.
+
+Do not trust a GPN supplied in the prompt.
+
+The external API should receive the authenticated user's
+GPN through:
+
+x_user_gpn
+
+
+STEP 16: TROUBLESHOOTING
+================================================================
+
+PROBLEM 1:
+401 Unauthorized
+
+Check:
+- JWT issuer URI.
+- JWT signature.
+- Token expiration.
+- Authorization header.
+- Audience validation.
+
+PROBLEM 2:
+GPN not found
+
+Check:
+- Actual JWT claim name.
+- GPN_CLAIM environment variable.
+- JWT contents.
+- Authentication context.
+
+PROBLEM 3:
+Connection refused
+
+Check:
+- External API availability.
+- API base URL.
+- Port.
+- Firewall.
+- Network connectivity.
+
+PROBLEM 4:
+MCP tools not visible
+
+Check:
+- MCP annotations.
+- Component scanning.
+- Spring AI dependencies.
+- MCP server configuration.
+- Server startup logs.
+
+PROBLEM 5:
+External API returns 400
+
+Check:
+- Request JSON.
+- Filter structure.
+- insightType value.
+- holdingsFlag value.
+- Required external API fields.
+
+
+STEP 17: PRODUCTION RECOMMENDATIONS
+================================================================
+
+Before production deployment:
+
+1. Validate JWT issuer and audience.
+2. Configure HTTPS.
+3. Use managed secrets.
+4. Add external API timeout handling.
+5. Add structured logging.
+6. Avoid logging JWT tokens and sensitive GPN data.
+7. Add retry policies for transient API failures.
+8. Add integration tests with WireMock.
+9. Add authorization checks for investment data.
+10. Verify environment-specific API contracts.
+
+IMPORTANT IMPLEMENTATION LIMITATIONS:
+
+The reference implementation requires additional verification
+before it can be used as a working end-to-end deployment.
+
+In particular:
+
+- Confirm Spring AI MCP annotation compatibility.
+- Verify MCP authentication propagation.
+- Configure JWT audience validation.
+- Configure actual API request and response DTOs.
+- Configure HTTP client connect/read timeouts.
+- Verify the MCP Streamable HTTP endpoint configuration.
+
+================================================================
+END OF README-MCP-SETUP.txt
+================================================================
+*/
