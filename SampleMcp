@@ -1,0 +1,906 @@
+
+/*
+================================================================
+FILE: pom.xml
+================================================================
+*/
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.company</groupId>
+    <artifactId>investment-insights-mcp</artifactId>
+    <version>1.0.0</version>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-boot.version>3.5.7</spring-boot.version>
+        <spring-ai.version>1.1.0</spring-ai.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/InvestmentMcpApplication.java
+================================================================
+*/
+package com.company.investment.mcp;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+
+@SpringBootApplication
+@ConfigurationPropertiesScan
+public class InvestmentMcpApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(
+            InvestmentMcpApplication.class,
+            args
+        );
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/model/InsightType.java
+================================================================
+*/
+package com.company.investment.mcp.model;
+
+public enum InsightType {
+
+    HOLDINGS,
+
+    ASSET_ALLOCATION,
+
+    PERFORMANCE,
+
+    TRANSACTIONS,
+
+    PORTFOLIO_SUMMARY,
+
+    UNKNOWN
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/model/InsightFilter.java
+================================================================
+*/
+package com.company.investment.mcp.model;
+
+public record InsightFilter(
+
+    InsightType insightType,
+
+    boolean holdingsFlag
+
+) {}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/model/InsightRequest.java
+================================================================
+*/
+package com.company.investment.mcp.model;
+
+public record InsightRequest(
+
+    InsightFilter filter
+
+) {}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/model/InsightResponse.java
+================================================================
+*/
+package com.company.investment.mcp.model;
+
+import java.util.Map;
+
+public record InsightResponse(
+
+    String userGpn,
+
+    InsightType insightType,
+
+    InsightFilter filter,
+
+    Map<String, Object> data
+
+) {}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/config/InsightProperties.java
+================================================================
+*/
+package com.company.investment.mcp.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "app.investment-api")
+public record InsightProperties(
+
+    String baseUrl,
+
+    String insightsPath,
+
+    int connectTimeout,
+
+    int readTimeout
+
+) {}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/config/ApiConfig.java
+================================================================
+*/
+package com.company.investment.mcp.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
+
+@Configuration
+public class ApiConfig {
+
+    @Bean
+    RestClient investmentRestClient(
+            RestClient.Builder builder,
+            InsightProperties properties) {
+
+        return builder
+            .baseUrl(properties.baseUrl())
+            .build();
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/config/SecurityConfig.java
+================================================================
+*/
+package com.company.investment.mcp.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http) throws Exception {
+
+        return http
+
+            .csrf(csrf -> csrf
+                .ignoringRequestMatchers("/mcp/**")
+            )
+
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/health")
+                .permitAll()
+                .anyRequest()
+                .authenticated()
+            )
+
+            .oauth2ResourceServer(oauth ->
+                oauth.jwt(Customizer.withDefaults())
+            )
+
+            .build();
+    }
+}
+
+
+
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/service/InsightClassificationService.java
+================================================================
+*/
+package com.company.investment.mcp.service;
+
+import com.company.investment.mcp.model.InsightFilter;
+import com.company.investment.mcp.model.InsightType;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Locale;
+
+@Service
+public class InsightClassificationService {
+
+    public InsightFilter classify(String prompt) {
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException(
+                "User prompt cannot be empty"
+            );
+        }
+
+        String normalized = prompt
+            .toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9_ ]", " ");
+
+        InsightType type;
+
+        if (normalized.matches("(?s).*\\bholdings\\b.*")) {
+
+            type = InsightType.HOLDINGS;
+
+        } else if (
+            normalized.contains("asset allocation")
+            || normalized.contains("asset_allocation")
+        ) {
+
+            type = InsightType.ASSET_ALLOCATION;
+
+        } else if (normalized.contains("performance")) {
+
+            type = InsightType.PERFORMANCE;
+
+        } else if (normalized.contains("transactions")) {
+
+            type = InsightType.TRANSACTIONS;
+
+        } else if (
+            normalized.contains("portfolio summary")
+        ) {
+
+            type = InsightType.PORTFOLIO_SUMMARY;
+
+        } else {
+
+            type = InsightType.UNKNOWN;
+        }
+
+        boolean holdingsFlag =
+            type == InsightType.HOLDINGS
+            || type == InsightType.ASSET_ALLOCATION;
+
+        return new InsightFilter(
+            type,
+            holdingsFlag
+        );
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/service/UserIdentityService.java
+================================================================
+*/
+package com.company.investment.mcp.service;
+
+import org.springframework.beans.factory.annotation.Value;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserIdentityService {
+
+    @Value("${app.security.gpn-claim:userGpn}")
+    private String gpnClaim;
+
+    public String getUserGpn() {
+
+        Authentication authentication =
+            SecurityContextHolder.getContext()
+                .getAuthentication();
+
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuth)
+                || !authentication.isAuthenticated()) {
+
+            throw new SecurityException(
+                "Authenticated JWT context unavailable"
+            );
+        }
+
+        String gpn = jwtAuth.getToken()
+            .getClaimAsString(gpnClaim);
+
+        if (gpn == null || gpn.isBlank()) {
+
+            throw new SecurityException(
+                "User GPN not found in authenticated token"
+            );
+        }
+
+        return gpn;
+    }
+
+    public String getBearerToken() {
+
+        Authentication authentication =
+            SecurityContextHolder.getContext()
+                .getAuthentication();
+
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuth)
+                || !authentication.isAuthenticated()) {
+
+            throw new SecurityException(
+                "Authentication token unavailable"
+            );
+        }
+
+        return jwtAuth.getToken().getTokenValue();
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/client/InvestmentApiClient.java
+================================================================
+*/
+package com.company.investment.mcp.client;
+
+import com.company.investment.mcp.config.InsightProperties;
+import com.company.investment.mcp.model.InsightRequest;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
+import org.springframework.stereotype.Component;
+
+import org.springframework.web.client.RestClient;
+
+import java.util.Map;
+
+@Component
+public class InvestmentApiClient {
+
+    private final RestClient restClient;
+
+    private final InsightProperties properties;
+
+    public InvestmentApiClient(
+            RestClient investmentRestClient,
+            InsightProperties properties) {
+
+        this.restClient = investmentRestClient;
+
+        this.properties = properties;
+    }
+
+    public Map<String, Object> fetchInsights(
+            String token,
+            String userGpn,
+            InsightRequest request) {
+
+        return restClient.post()
+
+            .uri(properties.insightsPath())
+
+            .header(
+                HttpHeaders.AUTHORIZATION,
+                "Bearer " + token
+            )
+
+            .header(
+                "x_user_gpn",
+                userGpn
+            )
+
+            .contentType(MediaType.APPLICATION_JSON)
+
+            .accept(MediaType.APPLICATION_JSON)
+
+            .body(request)
+
+            .retrieve()
+
+            .body(Map.class);
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/service/InvestmentInsightService.java
+================================================================
+*/
+package com.company.investment.mcp.service;
+
+import com.company.investment.mcp.client.InvestmentApiClient;
+
+import com.company.investment.mcp.model.InsightFilter;
+import com.company.investment.mcp.model.InsightRequest;
+import com.company.investment.mcp.model.InsightResponse;
+import com.company.investment.mcp.model.InsightType;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+
+@Service
+public class InvestmentInsightService {
+
+    private final InsightClassificationService classifier;
+
+    private final UserIdentityService identityService;
+
+    private final InvestmentApiClient apiClient;
+
+    public InvestmentInsightService(
+            InsightClassificationService classifier,
+            UserIdentityService identityService,
+            InvestmentApiClient apiClient) {
+
+        this.classifier = classifier;
+
+        this.identityService = identityService;
+
+        this.apiClient = apiClient;
+    }
+
+    public InsightResponse getInsights(String prompt) {
+
+        InsightFilter filter =
+            classifier.classify(prompt);
+
+        if (filter.insightType() == InsightType.UNKNOWN) {
+
+            throw new IllegalArgumentException(
+                "Unsupported insight type"
+            );
+        }
+
+        String userGpn =
+            identityService.getUserGpn();
+
+        String token =
+            identityService.getBearerToken();
+
+        InsightRequest request =
+            new InsightRequest(filter);
+
+        Map<String, Object> data =
+            apiClient.fetchInsights(
+                token,
+                userGpn,
+                request
+            );
+
+        return new InsightResponse(
+            userGpn,
+            filter.insightType(),
+            filter,
+            data
+        );
+    }
+}
+
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/tools/InsightClassificationTools.java
+================================================================
+*/
+package com.company.investment.mcp.tools;
+
+import com.company.investment.mcp.model.InsightFilter;
+import com.company.investment.mcp.model.InsightType;
+
+import com.company.investment.mcp.service.InsightClassificationService;
+
+import org.springframework.stereotype.Component;
+
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Component
+public class InsightClassificationTools {
+
+    private final InsightClassificationService classifier;
+
+    public InsightClassificationTools(
+            InsightClassificationService classifier) {
+
+        this.classifier = classifier;
+    }
+
+    @McpTool(
+        name = "classify_insight_request",
+        description = """
+            Classifies the user's investment insight request.
+
+            Supported types:
+            HOLDINGS,
+            ASSET_ALLOCATION,
+            PERFORMANCE,
+            TRANSACTIONS,
+            PORTFOLIO_SUMMARY.
+
+            holdingsFlag must be true for HOLDINGS and
+            ASSET_ALLOCATION.
+
+            holdingsFlag must be false for other types.
+
+            Does not fetch external investment data.
+            """
+    )
+    public InsightFilter classify(
+
+        @McpToolParam(
+            description = "Original investment question from user",
+            required = true
+        )
+
+        String userPrompt
+
+    ) {
+
+        return classifier.classify(userPrompt);
+    }
+
+    @McpTool(
+        name = "get_supported_insight_types",
+        description = """
+            Returns all investment insight categories supported
+            by this MCP server.
+
+            Does not fetch investment data.
+            """
+    )
+    public List<String> getSupportedInsightTypes() {
+
+        return Arrays.stream(InsightType.values())
+
+            .filter(type -> type != InsightType.UNKNOWN)
+
+            .map(Enum::name)
+
+            .toList();
+    }
+}
+
+
+/*
+================================================================
+FILE: src/main/java/com/company/investment/mcp/tools/InvestmentInsightTools.java
+================================================================
+*/
+package com.company.investment.mcp.tools;
+
+import com.company.investment.mcp.model.InsightResponse;
+
+import com.company.investment.mcp.service.InvestmentInsightService;
+
+import org.springframework.stereotype.Component;
+
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
+
+@Component
+public class InvestmentInsightTools {
+
+    private final InvestmentInsightService service;
+
+    public InvestmentInsightTools(
+            InvestmentInsightService service) {
+
+        this.service = service;
+    }
+
+    @McpTool(
+        name = "get_investment_insights",
+        description = """
+            Retrieves the authenticated user's investment insights.
+
+            Classify the original user prompt and determine insightType.
+
+            Set holdingsFlag=true for:
+            HOLDINGS
+            ASSET_ALLOCATION
+
+            Set holdingsFlag=false for:
+            PERFORMANCE
+            TRANSACTIONS
+            PORTFOLIO_SUMMARY
+
+            Extract userGpn from the authenticated harness JWT.
+
+            Forward the authenticated bearer token to the external API.
+
+            Set x_user_gpn using the authenticated user's GPN.
+
+            Never request authentication tokens or GPN from users.
+
+            Use this tool to retrieve actual investment data.
+            """
+    )
+    public InsightResponse getInvestmentInsights(
+
+        @McpToolParam(
+            description = "Original user investment question",
+            required = true
+        )
+
+        String userPrompt
+
+    ) {
+
+        return service.getInsights(userPrompt);
+    }
+}
+
+
+
+/*
+================================================================
+FILE: src/main/resources/application.yml
+================================================================
+*/
+spring:
+  application:
+    name: investment-insights-mcp
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+  ai:
+    mcp:
+      server:
+        name: investment-insights-mcp
+        version: 1.0.0
+        type: SYNC
+        protocol: STREAMABLE
+
+        instructions: >
+          Identify the requested investment insight type.
+          Holdings and asset allocation must use holdingsFlag true.
+          Other supported types must use false.
+          Never request user GPN or authentication tokens.
+
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  security:
+    gpn-claim: ${GPN_CLAIM:userGpn}
+
+  investment-api:
+    connect-timeout: 5000
+    read-timeout: 15000
+
+logging:
+  level:
+    root: INFO
+    com.company.investment.mcp: INFO
+
+
+/ *
+================================================================
+FILE: src/main/resources/application-local.yml
+================================================================
+*/
+spring:
+  ai:
+    mcp:
+      server:
+        stdio: false
+        protocol: STREAMABLE
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:9000/issuer}
+
+app:
+  investment-api:
+    base-url: ${INVESTMENT_API_URL:http://localhost:9090}
+    insights-path: /api/investment/insights
+    connect-timeout: 5000
+    read-timeout: 15000
+
+
+/*
+================================================================
+FILE: src/main/resources/application-dev.yml
+================================================================
+*/
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        stdio: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI}
+
+app:
+  investment-api:
+    base-url: ${INVESTMENT_API_URL}
+    insights-path: /api/investment/insights
+    connect-timeout: 5000
+    read-timeout: 20000
+
+
+/*
+================================================================
+FILE: src/main/resources/application-qa.yml
+================================================================
+*/
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        stdio: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI}
+
+app:
+  investment-api:
+    base-url: ${INVESTMENT_API_URL}
+    insights-path: /api/investment/insights
+    connect-timeout: 5000
+    read-timeout: 20000
+
+
+/*
+================================================================
+FILE: src/main/resources/application-prod.yml
+================================================================
+*/
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        stdio: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI}
+
+app:
+  investment-api:
+    base-url: ${INVESTMENT_API_URL}
+    insights-path: /api/investment/insights
+    connect-timeout: 3000
+    read-timeout: 15000
+
+logging:
+  level:
+    root: WARN
+    com.company.investment.mcp: INFO
+
+
+
+
