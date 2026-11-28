@@ -1,0 +1,150 @@
+<dependencies>
+<dependency>
+<groupId>org.springframework.ai</groupId>
+<artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+</dependency>
+</dependencies>
+
+
+
+server:
+port: 8080
+
+spring:
+ai:
+mcp:
+server:
+name: user-context-api-server
+version: 1.0.0
+protocol: STREAMABLE
+
+
+
+
+package com.example.mcp.config;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.function.RouterFunction;
+import org.springframework.web.servlet.function.ServerResponse;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class McpTransportConfig {
+
+@Bean
+public WebMvcStreamableServerTransportProvider webMvcTransportProvider(ObjectMapper objectMapper) {
+return WebMvcStreamableServerTransportProvider.builder()
+.objectMapper(objectMapper)
+.mcpEndpoint("/mcp")
+.contextExtractor(serverRequest -> {
+Map<String, Object> contextMap = new HashMap<>();
+
+// Extract user-specific headers from the HTTP request
+String userId = serverRequest.headers().firstHeader("X-User-Id");
+String authHeader = serverRequest.headers().firstHeader("Authorization");
+
+if (userId != null) contextMap.put("userId", userId);
+if (authHeader != null) contextMap.put("authorization", authHeader);
+
+return McpTransportContext.create(contextMap);
+})
+.build();
+}
+
+@Bean
+public RouterFunction<ServerResponse> mcpRouterFunction(WebMvcStreamableServerTransportProvider transportProvider) {
+return transportProvider.getRouterFunction();
+}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+package com.example.mcp.tools;
+
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
+import org.springaicommunity.mcp.annotation.McpTool;
+import org.springaicommunity.mcp.annotation.McpToolParam;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class UserPostsTool {
+
+private final RestClient restClient;
+
+public UserPostsTool(RestClient.Builder restClientBuilder) {
+this.restClient = restClientBuilder
+.baseUrl("https://typicode.com")
+.defaultHeader(HttpHeaders.ACCEPT, "application/json")
+.build();
+}
+
+@McpTool(
+name = "get_user_posts",
+description = "Fetch posts from an external API scoped to the current user's context."
+)
+public List<Map<String, Object>> getUserPosts(
+McpSyncServerExchange exchange,
+@McpToolParam(description = "Maximum number of posts to return", required = false) Integer limit
+) {
+// 1. Retrieve user context populated by the TransportContextExtractor
+McpTransportContext context = exchange.transportContext();
+String userId = (context != null) ? (String) context.get("userId") : null;
+String authToken = (context != null) ? (String) context.get("authorization") : null;
+
+if (userId == null || userId.isBlank()) {
+throw new IllegalStateException("Missing user context: 'X-User-Id' header is required.");
+}
+
+int resolvedLimit = (limit != null && limit > 0) ? limit : 5;
+
+// 2. Call the external API using the extracted user context
+try {
+return restClient.get()
+.uri(uriBuilder -> uriBuilder
+.path("/posts")
+.queryParam("userId", userId)
+.queryParam("_limit", resolvedLimit)
+.build())
+.headers(headers -> {
+if (authToken != null) {
+headers.set(HttpHeaders.AUTHORIZATION, authToken);
+}
+})
+.retrieve()
+.body(new ParameterizedTypeReference<>() {});
+} catch (RestClientException e) {
+throw new RuntimeException("External API request failed: " + e.getMessage(), e);
+}
+}
+}
+
+
+
+
+
+
+
+
